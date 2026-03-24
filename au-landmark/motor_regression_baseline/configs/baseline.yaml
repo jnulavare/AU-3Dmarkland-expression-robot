@@ -1,0 +1,26 @@
+data:
+  dataset_root: "E:/DD/Git/X2C"
+  latent_file: "D:/code/test2/x2c_data_bundle/LATENT24_X2C_gpu.csv.gz"
+  target_file: "D:/code/test2/x2c_data_bundle/metadata_normalize.jsonl"
+  train_split: "E:/DD/Git/X2C/train_split.pkl"
+  val_split: "E:/DD/Git/X2C/val_split.pkl"
+  test_split: "E:/DD/Git/X2C/test_split.pkl"
+
+model:
+  input_dim: 24
+  hidden_dim1: 64
+  hidden_dim2: 64
+  output_dim: 30
+
+train:
+  device: "cuda"
+  seed: 42
+  epochs: 300
+  batch_size: 256
+  num_workers: 0
+  lr: 0.001
+  output_dir: "D:/code/test2/motor_regression_baseline/runs/baseline_mlp_24_64_64_30"
+  early_stopping:
+    patience: 30
+    min_delta: 1.0e-6
+
