@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#30缁寸數鏈哄弬鏁版鍒欏寲
 from __future__ import annotations
 
 import argparse
@@ -7,7 +8,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 
-# 构建 30 维电机控制值的归一化区间定义
+# 鏋勫缓 30 缁寸數鏈烘帶鍒跺€肩殑褰掍竴鍖栧尯闂村畾涔?
 def build_ranges() -> List[Tuple[float, float]]:
     ranges: List[Tuple[float, float]] = []
     ranges.extend([(0.0, 1.0)] * 4)        # 0-3 Brows
@@ -22,7 +23,7 @@ def build_ranges() -> List[Tuple[float, float]]:
     return ranges
 
 
-# 单值归一化并裁剪到 [0,1]
+# 鍗曞€煎綊涓€鍖栧苟瑁佸壀鍒?[0,1]
 def normalize_value(x: float, lo: float, hi: float) -> float:
     if hi <= lo:
         return 0.0
@@ -35,14 +36,14 @@ def normalize_value(x: float, lo: float, hi: float) -> float:
 
 
 def main() -> None:
-    # 读取输入输出路径参数
+    # 璇诲彇杈撳叆杈撳嚭璺緞鍙傛暟
     parser = argparse.ArgumentParser(description="Normalize X2C metadata ctrl_value to [0,1].")
-    parser.add_argument("--input", type=Path, default=Path("metadata.jsonl"))
-    parser.add_argument("--output", type=Path, default=Path("metadata_normalize.jsonl"))
+    parser.add_argument("--input", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\metadata.jsonl"))
+    parser.add_argument("--output", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\metadata_normalize.jsonl"))
     parser.add_argument(
         "--stats-output",
         type=Path,
-        default=Path("metadata_normalize.stats.json"),
+        default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\metadata_normalize.stats.json"),
     )
     args = parser.parse_args()
 
@@ -55,7 +56,7 @@ def main() -> None:
     mins = [1.0] * 30
     maxs = [0.0] * 30
 
-    # 全量遍历 metadata.jsonl 并按维度归一化
+    # 鍏ㄩ噺閬嶅巻 metadata.jsonl 骞舵寜缁村害褰掍竴鍖?
     with args.input.open("r", encoding="utf-8") as fin, args.output.open("w", encoding="utf-8", newline="\n") as fout:
         for line in fin:
             line = line.strip()
@@ -82,7 +83,7 @@ def main() -> None:
             fout.write(json.dumps(out, ensure_ascii=False) + "\n")
             count += 1
 
-    # 输出统计信息，便于检查归一化范围
+    # 杈撳嚭缁熻淇℃伅锛屼究浜庢鏌ュ綊涓€鍖栬寖鍥?
     stats = {
         "input": str(args.input),
         "output": str(args.output),
@@ -103,3 +104,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

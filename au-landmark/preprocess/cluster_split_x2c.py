@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#划分数据集的簇
 from __future__ import annotations
 
 import argparse
@@ -22,8 +23,8 @@ TARGET_RATIOS = np.array([0.70, 0.15, 0.15], dtype=np.float64)
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Cluster-based train/val/test split for X2C.")
     p.add_argument("--dataset-root", type=Path, default=Path(r"E:\DD\Git\X2C"))
-    p.add_argument("--latent-file", type=Path, default=Path(r"D:\code\test2\x2c_data_bundle\LATENT24_X2C_gpu.csv.gz"))
-    p.add_argument("--metadata-file", type=Path, default=Path(r"D:\code\test2\x2c_data_bundle\metadata.jsonl"))
+    p.add_argument("--latent-file", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\LATENT24_X2C_gpu.csv.gz"))
+    p.add_argument("--metadata-file", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\metadata.jsonl"))
     p.add_argument("--n-clusters", type=int, default=320, help="Recommended 200-500.")
     p.add_argument("--cluster-device", type=str, default="cuda")
     p.add_argument("--cluster-iters", type=int, default=40)

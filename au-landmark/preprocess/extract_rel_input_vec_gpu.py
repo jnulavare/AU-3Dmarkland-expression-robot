@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#GPU鎻愬彇REL鏁版嵁
 """
 Build relative expression features from existing ABS outputs using GPU tensor ops.
 
@@ -26,11 +27,11 @@ import numpy as np
 
 
 def parse_args() -> argparse.Namespace:
-    # 读取 REL 计算参数
+    # 璇诲彇 REL 璁＄畻鍙傛暟
     p = argparse.ArgumentParser(description="Build REL vectors from ABS file and neutral image.")
-    p.add_argument("--abs-file", type=Path, default=Path("ABS_input_vec_X2C_gpu.csv.gz"))
+    p.add_argument("--abs-file", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\ABS_input_vec_X2C_gpu.csv.gz"))
     p.add_argument("--neutral-image", type=Path, default=Path(r"D:\code\X2CNet-main\assets\ameca_neutral.jpg"))
-    p.add_argument("--output", type=Path, default=Path("REL_input_vec_X2C_gpu.csv.gz"))
+    p.add_argument("--output", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\REL_input_vec_X2C_gpu.csv.gz"))
     p.add_argument("--batch-size", type=int, default=4096)
     p.add_argument("--log-every", type=int, default=20000)
     p.add_argument("--device", type=str, default="cuda")
@@ -114,7 +115,7 @@ def build_output_columns(au_names: Sequence[str], dist_names: Sequence[str]) -> 
 
 
 def extract_neutral_abs_vectors(neutral_image: Path, device: str, torch_home: Path):
-    # 先对 neutral 图像提取 ABS 基准向量
+    # 鍏堝 neutral 鍥惧儚鎻愬彇 ABS 鍩哄噯鍚戦噺
     os.environ["TORCH_HOME"] = str(torch_home)
     torch_home.mkdir(parents=True, exist_ok=True)
 
@@ -169,7 +170,7 @@ def process_batch(
     dist_neutral_t,
     device: str,
 ) -> List[Dict[str, object]]:
-    # 批量计算 AU/LMK/DIST 的相对值，并拼接 190 维 REL_input_vec
+    # 鎵归噺璁＄畻 AU/LMK/DIST 鐨勭浉瀵瑰€硷紝骞舵嫾鎺?190 缁?REL_input_vec
     import torch
 
     b = len(rows)
@@ -228,7 +229,7 @@ def process_batch(
 
 
 def main() -> None:
-    # 主流程：读取 ABS，按 neutral 计算 REL，流式写出结果
+    # 涓绘祦绋嬶細璇诲彇 ABS锛屾寜 neutral 璁＄畻 REL锛屾祦寮忓啓鍑虹粨鏋?
     args = parse_args()
     if not args.abs_file.exists():
         raise FileNotFoundError(f"ABS file not found: {args.abs_file}")
@@ -367,3 +368,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

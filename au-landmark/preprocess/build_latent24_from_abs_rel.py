@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#利用abs和rel参数构建24维度latent
 from __future__ import annotations
 
 import argparse
@@ -54,9 +55,9 @@ JAW_DIST = ["jaw_open", "chin_to_nose", "chin_to_upper_lip"]
 # 读取 latent 构建参数
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Build 24D latent from ABS(192) + REL(190)")
-    p.add_argument("--abs-file", type=Path, default=Path(r"D:\code\test2\x2c_data_bundle\ABS_input_vec_X2C_gpu.csv.gz"))
-    p.add_argument("--rel-file", type=Path, default=Path(r"D:\code\test2\x2c_data_bundle\REL_input_vec_X2C_gpu.csv.gz"))
-    p.add_argument("--output", type=Path, default=Path(r"D:\code\test2\x2c_data_bundle\LATENT24_X2C_gpu.csv.gz"))
+    p.add_argument("--abs-file", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\ABS_input_vec_X2C_gpu.csv.gz"))
+    p.add_argument("--rel-file", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\REL_input_vec_X2C_gpu.csv.gz"))
+    p.add_argument("--output", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\LATENT24_X2C_gpu.csv.gz"))
     p.add_argument("--batch-size", type=int, default=4096)
     p.add_argument("--log-every", type=int, default=20000)
     p.add_argument("--max-rows", type=int, default=0, help="0 means all rows.")

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#gpu璁粌锛屾彁鍙朅BS鏁版嵁
 """
 GPU ABS feature extraction for X2C.
 
@@ -24,7 +25,7 @@ import cv2
 import numpy as np
 
 
-# AU 输出维度定义（15维）
+# AU 杈撳嚭缁村害瀹氫箟锛?5缁达級
 AU_NAMES: List[str] = [
     "AU1",
     "AU2",
@@ -43,7 +44,7 @@ AU_NAMES: List[str] = [
     "AU26",
 ]
 
-# 几何距离输出维度定义（24维）
+# 鍑犱綍璺濈杈撳嚭缁村害瀹氫箟锛?4缁达級
 DIST_NAMES: List[str] = [
     "brow_left_eye_dist",
     "brow_right_eye_dist",
@@ -309,11 +310,11 @@ def build_default_row() -> Dict[str, object]:
 
 
 def parse_args() -> argparse.Namespace:
-    # 读取 ABS 抽取参数
+    # 璇诲彇 ABS 鎶藉彇鍙傛暟
     p = argparse.ArgumentParser(description="GPU ABS feature extraction (face-alignment CUDA)")
     p.add_argument("--dataset-root", type=Path, default=Path(r"E:\DD\Git\X2C"))
     p.add_argument("--image-dirs", nargs="*", default=None)
-    p.add_argument("--output", type=Path, default=Path("ABS_input_vec_X2C_gpu.csv.gz"))
+    p.add_argument("--output", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\ABS_input_vec_X2C_gpu.csv.gz"))
     p.add_argument("--max-images", type=int, default=0)
     p.add_argument("--log-every", type=int, default=200)
     p.add_argument("--torch-home", type=Path, default=Path(r"D:\torch_cache"))
@@ -386,7 +387,7 @@ def extract_one(
     tracked_bbox: np.ndarray | None = None,
     tracked_conf: float = 0.0,
 ) -> Tuple[Dict[str, object], np.ndarray | None, float]:
-    # 单张图抽取：face bbox + pose + AU_abs + LMK_abs + DIST_abs + ABS_input_vec
+    # 鍗曞紶鍥炬娊鍙栵細face bbox + pose + AU_abs + LMK_abs + DIST_abs + ABS_input_vec
     row = build_default_row()
     row["image_name"] = path.name
     try:
@@ -493,7 +494,7 @@ def extract_one(
 
 
 def main() -> None:
-    # 主流程：遍历图片并流式写出 ABS 文件
+    # 涓绘祦绋嬶細閬嶅巻鍥剧墖骞舵祦寮忓啓鍑?ABS 鏂囦欢
     args = parse_args()
     os.environ["TORCH_HOME"] = str(args.torch_home)
     args.torch_home.mkdir(parents=True, exist_ok=True)
@@ -611,3 +612,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

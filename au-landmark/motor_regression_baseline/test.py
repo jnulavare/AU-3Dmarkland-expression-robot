@@ -5,12 +5,12 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
 import torch
 import yaml
 from torch.utils.data import DataLoader
 
 from data_utils import XYDataset, build_xy_from_split, load_latent24_map, load_target30_map
+from eval_metrics import collect_predictions, compute_regression_metrics, load_motor_region_indices
 from model import MotorRegressorMLP
 
 
@@ -30,14 +30,15 @@ def resolve_device(device_cfg: str) -> torch.device:
 
 
 def main() -> None:
-    # 读取配置与 checkpoint 路径
+    # 读取配置和 checkpoint 路径
     args = parse_args()
     cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
     device = resolve_device(str(cfg["train"]["device"]))
     output_dir = Path(cfg["train"]["output_dir"])
     ckpt_path = args.ckpt or (output_dir / "best.pt")
+    metrics_cfg = cfg.get("metrics", {})
 
-    # 加载测试集数据
+    # 加载测试集
     latent_map = load_latent24_map(Path(cfg["data"]["latent_file"]))
     target_map = load_target30_map(Path(cfg["data"]["target_file"]))
     x_test, y_test = build_xy_from_split(Path(cfg["data"]["test_split"]), latent_map, target_map)
@@ -62,32 +63,35 @@ def main() -> None:
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 
-    # 测试：统计每个维度 MAE 及总体 MAE
-    abs_err_sum = np.zeros(30, dtype=np.float64)
-    n = 0
-    with torch.inference_mode():
-        for x, y in loader:
-            x = x.to(device, non_blocking=True)
-            y = y.to(device, non_blocking=True)
-            pred = model(x)
-            err = torch.abs(pred - y).detach().cpu().numpy()
-            abs_err_sum += err.sum(axis=0)
-            n += err.shape[0]
+    # 评估：RMSE/R2/EV/P95+Max误差/分区域/越界率
+    y_true, y_pred = collect_predictions(model, loader, device)
+    region_indices = load_motor_region_indices(metrics_cfg=metrics_cfg, dim=y_true.shape[1])
+    metric_dict = compute_regression_metrics(
+        y_true=y_true,
+        y_pred=y_pred,
+        region_indices=region_indices,
+        abs_error_percentile=float(metrics_cfg.get("abs_error_percentile", 95.0)),
+        out_range_lo=float(metrics_cfg.get("out_range_lo", 0.0)),
+        out_range_hi=float(metrics_cfg.get("out_range_hi", 1.0)),
+    )
 
     # 保存测试结果
-    mae_per_dim = abs_err_sum / max(n, 1)
-    mae = float(np.mean(mae_per_dim))
     metrics = {
         "split": "test",
-        "samples": int(n),
-        "mae": mae,
-        "mae_per_dim": mae_per_dim.tolist(),
+        **metric_dict,
         "ckpt": str(ckpt_path),
         "device": str(device),
+        "region_indices": region_indices,
     }
     out_json = output_dir / "test_metrics.json"
     out_json.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[DONE] test_mae={mae:.6f} samples={n}")
+    print(
+        "[DONE] test "
+        f"mae={metrics['mae']:.6f} rmse={metrics['rmse']:.6f} "
+        f"r2={metrics['r2'] if metrics['r2'] is not None else 'NA'} "
+        f"ev={metrics['explained_variance'] if metrics['explained_variance'] is not None else 'NA'} "
+        f"oor={metrics['out_of_range']['ratio']:.6f} samples={metrics['samples']}"
+    )
     print(f"[DONE] metrics={out_json}")
 
 

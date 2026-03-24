@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#由于图片有一定连贯性，所以需要分簇进行划分，该文件用于检测簇的分布合理性
 from __future__ import annotations
 
 import argparse
@@ -18,15 +19,15 @@ import cluster_split_x2c as cs
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Analyze split stats for latent24/ctrl30/cluster distribution.")
     p.add_argument("--dataset-root", type=Path, default=Path(r"E:\DD\Git\X2C"))
-    p.add_argument("--latent-file", type=Path, default=Path(r"D:\code\test2\x2c_data_bundle\LATENT24_X2C_gpu.csv.gz"))
-    p.add_argument("--metadata-file", type=Path, default=Path(r"D:\code\test2\x2c_data_bundle\metadata.jsonl"))
+    p.add_argument("--latent-file", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\LATENT24_X2C_gpu.csv.gz"))
+    p.add_argument("--metadata-file", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\metadata.jsonl"))
     p.add_argument("--report-file", type=Path, default=Path(r"E:\DD\Git\X2C\cluster_split_report.json"))
     p.add_argument("--train-pkl", type=Path, default=Path(r"E:\DD\Git\X2C\train_split.pkl"))
     p.add_argument("--val-pkl", type=Path, default=Path(r"E:\DD\Git\X2C\val_split.pkl"))
     p.add_argument("--test-pkl", type=Path, default=Path(r"E:\DD\Git\X2C\test_split.pkl"))
-    p.add_argument("--out-latent-csv", type=Path, default=Path(r"E:\DD\Git\X2C\split_latent24_mean_var.csv"))
-    p.add_argument("--out-ctrl-csv", type=Path, default=Path(r"E:\DD\Git\X2C\split_ctrl30_mean_var.csv"))
-    p.add_argument("--out-cluster-json", type=Path, default=Path(r"E:\DD\Git\X2C\split_cluster_distribution.json"))
+    p.add_argument("--out-latent-csv", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\split_latent24_mean_var.csv"))
+    p.add_argument("--out-ctrl-csv", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\split_ctrl30_mean_var.csv"))
+    p.add_argument("--out-cluster-json", type=Path, default=Path(r"D:\code\AU+landmark\dataset\x2c_data_bundle\split_cluster_distribution.json"))
     return p.parse_args()
 
 
