@@ -294,11 +294,16 @@ def main() -> None:
         motor_regions=motor_regions,
     )
 
+    # grouped-head 输出分组（不填则使用模型内默认的 brow/eye/mouth/jaw 分组）
+    grouped_head_cfg = model_cfg.get("grouped_head", {})
+    motor_region_indices = grouped_head_cfg.get("motor_region_indices") if isinstance(grouped_head_cfg, dict) else None
+
     model = MotorRegressorMLP(
         input_dim=int(model_cfg["input_dim"]),
         hidden1=int(model_cfg["hidden_dim1"]),
         hidden2=int(model_cfg["hidden_dim2"]),
         output_dim=int(model_cfg["output_dim"]),
+        motor_region_indices=motor_region_indices,
     ).to(device)
     ckpt = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])

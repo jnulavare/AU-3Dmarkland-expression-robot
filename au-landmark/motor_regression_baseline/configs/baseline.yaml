@@ -12,6 +12,16 @@ model:
   hidden_dim2: 64
   output_dim: 30
 
+  # 模型结构：shared trunk + grouped heads
+  # 共享 trunk：24 -> hidden_dim1 -> hidden_dim2，提取全局共享表征 h_shared
+  # grouped heads：按 motor region 分头预测，最后按原始 30 维索引回填拼接
+  grouped_head:
+    motor_region_indices:
+      brow: [0, 1, 2, 3]
+      eye: [4, 5, 6, 7, 8, 9]
+      mouth: [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 29]
+      jaw: [10, 11, 12, 13, 14, 27, 28]
+
 train:
   device: "cuda"
   seed: 42
@@ -19,17 +29,19 @@ train:
   batch_size: 256
   num_workers: 0
   lr: 0.001
-  output_dir: "D:/code/AU+landmark/dataset/motor_regression_baseline"
+  output_dir: "D:/code/AU+landmark/dataset/motor_regression_compare2"
+
   # 是否将每次训练写入独立子目录（run_001/run_002/...）
   use_run_subdir: true
   # run 子目录前缀
   run_prefix: "run_"
-  # run 编号位数，3 => run_001
+  # run 编号位数：3 => run_001
   run_digits: 3
   # 手动指定 run 名称；留空则自动分配下一个编号
   run_name: ""
   # run_name 已存在时是否允许覆盖写入
   allow_existing_run: false
+
   early_stopping:
     patience: 30
     min_delta: 1.0e-6
@@ -51,7 +63,7 @@ metrics:
   # out-of-range 排行输出 Top-K
   out_of_range_top_k: 10
 
-  # 30维电机 -> 4区域映射
+  # 30维电机 -> 4 区域映射
   # brow: 0-3
   # eye: 4-9 (eyelids + gaze)
   # jaw: 10-14 + 27-28 (head + jaw + neck)
@@ -95,7 +107,7 @@ metrics:
     - "Neck Roll"
     - "Nose Wrinkle"
 
-  # 误差与表情/头姿关系分析
+  # 误差和表情/头姿关系分析
   error_context:
     enabled: true
     bins: 10
@@ -116,6 +128,7 @@ boundary:
   hi: 1.0
   # val/test 时是否对预测做裁剪，保证输出不越界
   clip_predictions_in_eval: true
+
   train:
     # 训练时主损失是否使用裁剪后的预测
     clamp_for_task_loss: true
