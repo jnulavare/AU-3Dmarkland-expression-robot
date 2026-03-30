@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+"""Validation entry for compare1 direct regression (feature382 -> motor30)."""
+
 import argparse
 import json
 from pathlib import Path
@@ -10,7 +12,7 @@ import torch
 import yaml
 from torch.utils.data import DataLoader
 
-from data_utils import XYDataset, build_xy_from_split, load_latent24_map, load_split_indices, load_target30_map
+from data_utils import XYDataset, build_xy_from_split, load_feature_map, load_split_indices, load_target30_map
 from eval_metrics import (
     analyze_error_vs_context,
     clip_predictions_to_range,
@@ -36,6 +38,7 @@ def _as_bool(v: object, default: bool) -> bool:
 
 
 def resolve_boundary_eval_cfg(cfg: dict) -> dict:
+    # Keep eval boundary behavior aligned with training/test scripts.
     """解析验证/测试阶段的边界后处理配置。"""
     metrics_cfg = cfg.get("metrics", {})
     boundary_cfg = cfg.get("boundary", {})
@@ -51,7 +54,7 @@ def resolve_boundary_eval_cfg(cfg: dict) -> dict:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Validate baseline regressor on val split.")
+    p = argparse.ArgumentParser(description="Validate baseline feature->motor30 regressor on val split.")
     p.add_argument("--config", type=Path, default=Path("configs/baseline.yaml"))
     p.add_argument("--ckpt", type=Path, default=None, help="Override config.eval and use explicit checkpoint path")
     return p.parse_args()
@@ -72,10 +75,16 @@ def main() -> None:
 
     ckpt_path, output_dir, run_name = resolve_eval_ckpt_path(cfg, args.ckpt)
 
-    latent_map = load_latent24_map(Path(cfg["data"]["latent_file"]))
+    # 1) Resolve inputs and load split arrays.
+    data_cfg = cfg["data"]
+    feature_file_cfg = data_cfg.get("feature_file")
+    if feature_file_cfg is None:
+        feature_file_cfg = data_cfg["latent_file"]
+    feature_file = Path(str(feature_file_cfg))
+    feature_map = load_feature_map(feature_file, expected_dim=int(cfg["model"]["input_dim"]))
     target_map = load_target30_map(Path(cfg["data"]["target_file"]))
     split_path = Path(cfg["data"]["val_split"])
-    x_val, y_val = build_xy_from_split(split_path, latent_map, target_map)
+    x_val, y_val = build_xy_from_split(split_path, feature_map, target_map)
 
     ds = XYDataset(x_val, y_val)
     loader = DataLoader(
@@ -86,6 +95,7 @@ def main() -> None:
         pin_memory=(device.type == "cuda"),
     )
 
+    # 2) Restore checkpoint and run forward pass.
     model = MotorRegressorMLP(
         input_dim=int(cfg["model"]["input_dim"]),
         hidden1=int(cfg["model"]["hidden_dim1"]),
@@ -127,6 +137,7 @@ def main() -> None:
         ),
     }
 
+    # 3) Optional context analysis (energy / pose).
     context_cfg = metrics_cfg.get("error_context", {})
     if bool(context_cfg.get("enabled", True)):
         split_indices = load_split_indices(split_path)
@@ -135,7 +146,7 @@ def main() -> None:
                 f"split size mismatch for context analysis: split={len(split_indices)} eval={y_true.shape[0]}"
             )
 
-        latent_parent = Path(cfg["data"]["latent_file"]).parent
+        latent_parent = feature_file.parent
         rel_file = Path(context_cfg.get("rel_file", str(latent_parent / "REL_input_vec_X2C_gpu.csv.gz")))
         abs_file = Path(context_cfg.get("abs_file", str(latent_parent / "ABS_input_vec_X2C_gpu.csv.gz")))
         context = load_context_feature_arrays(split_indices=split_indices, rel_file=rel_file, abs_file=abs_file)

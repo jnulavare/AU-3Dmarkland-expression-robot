@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+"""Run-folder and checkpoint resolution helpers (run_001/run_002/... style)."""
+
 from pathlib import Path
 from typing import Mapping, Tuple
 
@@ -52,13 +54,7 @@ def _next_run_dir(output_root: Path, prefix: str, digits: int) -> Path:
 
 
 def resolve_train_output_dir(train_cfg: Mapping[str, object]) -> Tuple[Path, str | None]:
-    """
-    根据 train 配置解析训练输出目录。
-
-    返回:
-    - output_dir: 当前训练实际写入目录
-    - run_name: 若启用 run 子目录则返回 run_xxx 名称，否则返回 None
-    """
+    """Resolve train output directory, with optional auto-increment run subfolder."""
     output_root = Path(str(train_cfg["output_dir"]))
     use_run_subdir = _as_bool(train_cfg.get("use_run_subdir", True), default=True)
     run_prefix = str(train_cfg.get("run_prefix", "run_"))
@@ -85,18 +81,7 @@ def resolve_train_output_dir(train_cfg: Mapping[str, object]) -> Tuple[Path, str
 
 
 def resolve_eval_ckpt_path(cfg: Mapping[str, object], explicit_ckpt: Path | None) -> Tuple[Path, Path, str | None]:
-    """
-    解析评估阶段 checkpoint 路径。
-
-    优先级:
-    1) 命令行 --ckpt
-    2) config.eval.{run_name,ckpt_file} + config.train.output_dir
-
-    返回:
-    - ckpt_path: checkpoint 文件路径
-    - output_dir: 结果输出目录（通常是 ckpt 所在目录）
-    - run_name: 解析得到的 run 名称（无 run 子目录时为 None）
-    """
+    """Resolve checkpoint path for val/test/explainability."""
     if explicit_ckpt is not None:
         ckpt_path = Path(explicit_ckpt)
         if not ckpt_path.exists():
@@ -124,7 +109,7 @@ def resolve_eval_ckpt_path(cfg: Mapping[str, object], explicit_ckpt: Path | None
         try:
             run_dir = _latest_run_dir(output_root, prefix=run_prefix)
         except RuntimeError:
-            # 向后兼容：若尚未启用 run 子目录，但根目录已有 ckpt，则直接回退到根目录。
+            # Backward compatibility for old layout with ckpt directly under output_root.
             legacy_ckpt = output_root / ckpt_file
             if legacy_ckpt.exists():
                 return legacy_ckpt, output_root, None

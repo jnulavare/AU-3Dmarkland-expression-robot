@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""latent->motor 可解释性与结构一致性分析脚本。"""
+"""Explainability & structure-consistency analysis for compare1 (feature382 -> motor30)."""
 
 from __future__ import annotations
 
@@ -12,25 +12,25 @@ import numpy as np
 import torch
 import yaml
 
-from data_utils import build_xy_from_split, load_latent24_map, load_target30_map
+from data_utils import build_xy_from_split, load_feature_map, load_target30_map
 from eval_metrics import load_motor_names, load_motor_region_indices
 from model import MotorRegressorMLP
 from run_utils import resolve_eval_ckpt_path
 
 
-# latent24 的默认区域划分（基于 build_latent24_from_abs_rel.py 的拼接顺序）
+# Default feature regions for compare1:
+# brow(74), eye(90), mouth(158), jaw(56), global(4) => total 382
 DEFAULT_LATENT_REGION_INDICES: Dict[str, List[int]] = {
-    "brow": [0, 1, 2, 3],
-    "eye": [4, 5, 6, 7],
-    "mouth": [8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
-    "jaw": [18, 19, 20, 21],
-    "global": [22, 23],
+    "brow": list(range(0, 74)),
+    "eye": list(range(74, 164)),
+    "mouth": list(range(164, 322)),
+    "jaw": list(range(322, 378)),
+    "global": list(range(378, 382)),
 }
 
 
 def parse_args() -> argparse.Namespace:
-    """解析命令行参数。"""
-    p = argparse.ArgumentParser(description="Explainability & structure consistency analysis for latent24->motor30.")
+    p = argparse.ArgumentParser(description="Explainability analysis for compare1 feature->motor regression.")
     p.add_argument("--config", type=Path, default=Path("configs/baseline.yaml"))
     p.add_argument("--ckpt", type=Path, default=None, help="Override config.eval and use explicit checkpoint path")
     p.add_argument(
@@ -44,9 +44,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def _to_index_list(v: object) -> List[int]:
-    """将对象校验并转换为 list[int]。"""
+    """Support two formats: [0, 1, 2] or {start: 0, end: 73}."""
+    if isinstance(v, Mapping):
+        if "start" not in v or "end" not in v:
+            raise RuntimeError(f"range mapping must contain 'start' and 'end', got: {v!r}")
+        start = int(v["start"])
+        end = int(v["end"])
+        if end < start:
+            raise RuntimeError(f"invalid range mapping: start={start}, end={end}")
+        return list(range(start, end + 1))
     if not isinstance(v, list):
-        raise RuntimeError(f"expect list[int], got: {type(v)}")
+        raise RuntimeError(f"expect list[int] or mapping(start/end), got: {type(v)}")
     out: List[int] = []
     for x in v:
         if not isinstance(x, int):
@@ -56,7 +64,6 @@ def _to_index_list(v: object) -> List[int]:
 
 
 def load_latent_region_indices(explain_cfg: Mapping[str, object] | None, dim: int) -> Dict[str, List[int]]:
-    """读取 latent 区域索引配置并做合法性校验。"""
     region_cfg = None
     if isinstance(explain_cfg, Mapping):
         region_cfg = explain_cfg.get("latent_region_indices")
@@ -76,7 +83,7 @@ def load_latent_region_indices(explain_cfg: Mapping[str, object] | None, dim: in
 
 
 def _corr_matrix(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """计算 x(latent) 与 y(motor) 的皮尔逊相关矩阵 [x_dim, y_dim]。"""
+    """Pearson correlation matrix with shape [x_dim, y_dim]."""
     if x.ndim != 2 or y.ndim != 2:
         raise RuntimeError(f"corr input must be 2D, got x={x.ndim}, y={y.ndim}")
     if x.shape[0] != y.shape[0]:
@@ -92,12 +99,10 @@ def _corr_matrix(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     xz = xc / x_std
     yz = yc / y_std
     corr = (xz.T @ yz) / max(x.shape[0] - 1, 1)
-    corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float64)
-    return corr
+    return np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float64)
 
 
 def _region_block_stats(corr: np.ndarray) -> Dict[str, float]:
-    """对某个相关矩阵子块计算统计摘要。"""
     abs_corr = np.abs(corr)
     return {
         "mean_corr": float(np.mean(corr)),
@@ -113,7 +118,6 @@ def build_region_corr_stats(
     latent_regions: Mapping[str, Iterable[int]],
     motor_regions: Mapping[str, Iterable[int]],
 ) -> Dict[str, object]:
-    """统计区域相关性（同名区域统计 + 全区域组合矩阵统计）。"""
     pair_stats: Dict[str, object] = {}
     matrix_stats: Dict[str, object] = {}
 
@@ -143,7 +147,6 @@ def build_region_corr_stats(
 
 
 def _predict_in_batches(model: torch.nn.Module, x_np: np.ndarray, device: torch.device, batch_size: int) -> np.ndarray:
-    """按 batch 做前向推理并返回拼接后的预测数组。"""
     preds: List[np.ndarray] = []
     model.eval()
     with torch.inference_mode():
@@ -156,7 +159,6 @@ def _predict_in_batches(model: torch.nn.Module, x_np: np.ndarray, device: torch.
 
 
 def _rank_motor_delta(delta_per_motor: np.ndarray, motor_names: List[str], top_k: int) -> List[Dict[str, object]]:
-    """对电机变化幅度做降序排名并截取 top-k。"""
     order = np.argsort(-delta_per_motor)
     out: List[Dict[str, object]] = []
     for idx in order[: max(1, top_k)].tolist():
@@ -181,7 +183,7 @@ def perturbation_sensitivity_analysis(
     random_seed: int,
     top_k: int,
 ) -> Dict[str, object]:
-    """做区域置零与扰动实验，计算电机输出变化敏感性。"""
+    """Region-level interventions: zeroing and gaussian noise."""
     base_pred = _predict_in_batches(model, x, device=device, batch_size=batch_size)
 
     rng = np.random.default_rng(random_seed)
@@ -224,7 +226,6 @@ def perturbation_sensitivity_analysis(
 
 
 def save_corr_heatmap_png(corr: np.ndarray, out_png: Path) -> bool:
-    """尝试保存相关矩阵热图；缺少 matplotlib 时返回 False。"""
     try:
         import matplotlib.pyplot as plt
     except Exception:
@@ -233,9 +234,9 @@ def save_corr_heatmap_png(corr: np.ndarray, out_png: Path) -> bool:
     fig = plt.figure(figsize=(12, 7))
     ax = fig.add_subplot(111)
     im = ax.imshow(corr, aspect="auto", cmap="coolwarm", vmin=-1.0, vmax=1.0)
-    ax.set_title("Latent24 vs Motor30 Correlation")
+    ax.set_title("Feature vs Motor30 Correlation")
     ax.set_xlabel("motor index")
-    ax.set_ylabel("latent index")
+    ax.set_ylabel("feature index")
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
@@ -245,7 +246,6 @@ def save_corr_heatmap_png(corr: np.ndarray, out_png: Path) -> bool:
 
 
 def resolve_split_path(data_cfg: Mapping[str, object], split: str) -> Path:
-    """根据 split 名称解析配置中的 split 文件路径。"""
     key = f"{split}_split"
     if key not in data_cfg:
         raise RuntimeError(f"config.data missing split path: {key}")
@@ -253,14 +253,17 @@ def resolve_split_path(data_cfg: Mapping[str, object], split: str) -> Path:
 
 
 def resolve_device(device_cfg: str) -> torch.device:
-    """根据配置字符串与 CUDA 可用性选择运行设备。"""
     if device_cfg.startswith("cuda") and torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
 
 
 def main() -> None:
-    """主流程：加载数据与模型，输出相关性和扰动敏感性分析文件。"""
+    # Pipeline:
+    # 1) load split features and targets
+    # 2) compute correlation statistics
+    # 3) run perturbation sensitivity
+    # 4) save csv/json/png artifacts
     args = parse_args()
     cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
 
@@ -278,9 +281,13 @@ def main() -> None:
     ckpt_path, eval_output_dir, run_name = resolve_eval_ckpt_path(cfg, args.ckpt)
 
     split_path = resolve_split_path(data_cfg, split)
-    latent_map = load_latent24_map(Path(str(data_cfg["latent_file"])))
+    feature_file_cfg = data_cfg.get("feature_file")
+    if feature_file_cfg is None:
+        feature_file_cfg = data_cfg["latent_file"]
+    feature_file = Path(str(feature_file_cfg))
+    feature_map = load_feature_map(feature_file, expected_dim=int(model_cfg["input_dim"]))
     target_map = load_target30_map(Path(str(data_cfg["target_file"])))
-    x, y = build_xy_from_split(split_path, latent_map, target_map)
+    x, y = build_xy_from_split(split_path, feature_map, target_map)
 
     corr_lm = _corr_matrix(x.astype(np.float64), y.astype(np.float64))
 

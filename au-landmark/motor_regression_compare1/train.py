@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+"""Training entry for compare1 direct regression (feature382 -> motor30)."""
+
 import argparse
 import csv
 import json
@@ -13,7 +15,7 @@ import torch
 import yaml
 from torch.utils.data import DataLoader
 
-from data_utils import XYDataset, build_xy_from_split, load_latent24_map, load_target30_map
+from data_utils import XYDataset, build_xy_from_split, load_feature_map, load_target30_map
 from model import MotorRegressorMLP
 from run_utils import resolve_train_output_dir
 
@@ -29,6 +31,7 @@ def _as_bool(v: object, default: bool) -> bool:
 
 
 def resolve_boundary_train_cfg(cfg: dict) -> dict:
+    # Parse boundary options once so train/eval behavior is consistent.
     """解析边界约束训练配置。"""
     metrics_cfg = cfg.get("metrics", {})
     boundary_cfg = cfg.get("boundary", {})
@@ -48,7 +51,7 @@ def resolve_boundary_train_cfg(cfg: dict) -> dict:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Train baseline latent24->motor30 regressor.")
+    p = argparse.ArgumentParser(description="Train baseline feature->motor30 regressor.")
     p.add_argument("--config", type=Path, default=Path("configs/baseline.yaml"))
     return p.parse_args()
 
@@ -67,6 +70,7 @@ def resolve_device(device_cfg: str) -> torch.device:
 
 
 def compute_boundary_loss_torch(pred: torch.Tensor, lo: float, hi: float) -> torch.Tensor:
+    # Penalize out-of-range values: (lo - pred)+ + (pred - hi)+
     """边界惩罚：超出上下界的幅度均值。"""
     return (torch.relu(lo - pred) + torch.relu(pred - hi)).mean()
 
@@ -106,7 +110,11 @@ def main() -> None:
     device = resolve_device(str(cfg["train"]["device"]))
     output_dir, run_name = resolve_train_output_dir(cfg["train"])
 
-    latent_file = Path(cfg["data"]["latent_file"])
+    data_cfg = cfg["data"]
+    feature_file_cfg = data_cfg.get("feature_file")
+    if feature_file_cfg is None:
+        feature_file_cfg = data_cfg["latent_file"]
+    feature_file = Path(str(feature_file_cfg))
     target_file = Path(cfg["data"]["target_file"])
     train_split = Path(cfg["data"]["train_split"])
     val_split = Path(cfg["data"]["val_split"])
@@ -123,13 +131,15 @@ def main() -> None:
         f"boundary_loss={boundary_cfg['enable_boundary_loss']} "
         f"weight={boundary_cfg['boundary_loss_weight']}"
     )
-    print("[INFO] loading latent/target maps...")
-    latent_map = load_latent24_map(latent_file)
+    # 1) Load full feature/target maps.
+    print("[INFO] loading feature/target maps...")
+    feature_map = load_feature_map(feature_file, expected_dim=int(cfg["model"]["input_dim"]))
     target_map = load_target30_map(target_file)
 
+    # 2) Materialize split arrays.
     print("[INFO] building train/val arrays...")
-    x_train, y_train = build_xy_from_split(train_split, latent_map, target_map)
-    x_val, y_val = build_xy_from_split(val_split, latent_map, target_map)
+    x_train, y_train = build_xy_from_split(train_split, feature_map, target_map)
+    x_val, y_val = build_xy_from_split(val_split, feature_map, target_map)
     print(f"[INFO] train={x_train.shape} val={x_val.shape}")
 
     train_ds = XYDataset(x_train, y_train)
@@ -173,6 +183,7 @@ def main() -> None:
     best_ckpt = output_dir / "best.pt"
     last_ckpt = output_dir / "last.pt"
 
+    # 3) Optimize model and keep best checkpoint by validation MAE.
     with history_path.open("w", encoding="utf-8", newline="") as f_hist:
         writer = csv.writer(f_hist)
         writer.writerow(["epoch", "train_loss_l1", "train_boundary_loss", "train_total_loss", "val_mae"])
