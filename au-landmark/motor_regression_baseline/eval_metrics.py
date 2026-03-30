@@ -119,6 +119,46 @@ def load_motor_names(metrics_cfg: Mapping[str, object] | None, dim: int) -> List
     return names[:dim]
 
 
+def clip_predictions_to_range(y_pred: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    """将预测值裁剪到合法区间 [lo, hi]。"""
+    return np.clip(y_pred, lo, hi).astype(np.float64)
+
+
+def compute_boundary_violation_metrics(
+    y_pred: np.ndarray,
+    lo: float,
+    hi: float,
+) -> Dict[str, object]:
+    """计算边界相关统计：越界比例、boundary loss、各维度越界比例。"""
+    if y_pred.ndim != 2:
+        raise RuntimeError(f"expect 2D y_pred, got ndim={y_pred.ndim}")
+    n, d = y_pred.shape
+    total = int(n * d)
+
+    low_violation = np.maximum(lo - y_pred, 0.0)
+    high_violation = np.maximum(y_pred - hi, 0.0)
+    violation = low_violation + high_violation
+    oor_mask = violation > 0.0
+
+    count_per_dim = np.sum(oor_mask, axis=0).astype(np.int64)
+    ratio_per_dim = np.mean(oor_mask.astype(np.float64), axis=0)
+
+    return {
+        "lo": float(lo),
+        "hi": float(hi),
+        "count": int(np.sum(oor_mask)),
+        "total": total,
+        "ratio": float(np.sum(oor_mask) / max(total, 1)),
+        "ratio_per_dim": [float(v) for v in ratio_per_dim.tolist()],
+        "count_per_dim": [int(v) for v in count_per_dim.tolist()],
+        "boundary_loss_mean": float(np.mean(violation)),
+        "boundary_loss_per_dim": [float(v) for v in np.mean(violation, axis=0).tolist()],
+        "boundary_loss_p95": float(np.percentile(violation, 95.0)),
+        "low_violation_mean": float(np.mean(low_violation)),
+        "high_violation_mean": float(np.mean(high_violation)),
+    }
+
+
 def collect_predictions(
     model: torch.nn.Module,
     loader: DataLoader,
@@ -410,12 +450,7 @@ def compute_regression_metrics(
             "max_abs_err": float(np.max(r_abs)),
         }
 
-    oor_mask = (y_pred < out_range_lo) | (y_pred > out_range_hi)
-    out_of_range_count = int(np.sum(oor_mask))
-    total_value_count = int(n * d)
-    out_of_range_ratio = float(out_of_range_count / max(total_value_count, 1))
-    out_of_range_ratio_per_dim = np.mean(oor_mask.astype(np.float64), axis=0)
-    out_of_range_count_per_dim = np.sum(oor_mask, axis=0).astype(np.int64)
+    boundary = compute_boundary_violation_metrics(y_pred=y_pred, lo=out_range_lo, hi=out_range_hi)
 
     sample_mae = np.mean(abs_err, axis=1)
 
@@ -428,13 +463,14 @@ def compute_regression_metrics(
         "by_rmse": _motor_ranking(rmse_per_dim, "rmse", motor_names),
         "by_p95_abs_err": _motor_ranking(p95_abs_err_per_dim, "p95_abs_err", motor_names),
     }
-    oor_items = _motor_ranking(out_of_range_ratio_per_dim, "out_of_range_ratio", motor_names)
+    oor_ratio_per_dim_arr = np.asarray(boundary["ratio_per_dim"], dtype=np.float64)
+    oor_items = _motor_ranking(oor_ratio_per_dim_arr, "out_of_range_ratio", motor_names)
     out_of_range_motor_ranking = {
         "top_k": int(max(1, out_of_range_top_k)),
         "items": [
             {
                 **row,
-                "out_of_range_count": int(out_of_range_count_per_dim[row["motor_idx"]]),
+                "out_of_range_count": int(boundary["count_per_dim"][row["motor_idx"]]),
             }
             for row in oor_items[: int(max(1, out_of_range_top_k))]
         ],
@@ -463,14 +499,13 @@ def compute_regression_metrics(
         "motor_error_ranking": motor_error_ranking,
         "out_of_range_motor_ranking": out_of_range_motor_ranking,
         "out_of_range": {
-            "lo": float(out_range_lo),
-            "hi": float(out_range_hi),
-            "count": out_of_range_count,
-            "total": total_value_count,
-            "ratio": out_of_range_ratio,
-            "within_range_ratio": float(1.0 - out_of_range_ratio),
-            "ratio_per_dim": [float(v) for v in out_of_range_ratio_per_dim.tolist()],
-            "count_per_dim": [int(v) for v in out_of_range_count_per_dim.tolist()],
+            **boundary,
+            "within_range_ratio": float(1.0 - float(boundary["ratio"])),
+        },
+        "boundary_loss": {
+            "mean": float(boundary["boundary_loss_mean"]),
+            "p95": float(boundary["boundary_loss_p95"]),
+            "per_dim": [float(v) for v in boundary["boundary_loss_per_dim"]],
         },
         "sample_error_summary": {
             "sample_mae_mean": float(np.mean(sample_mae)),

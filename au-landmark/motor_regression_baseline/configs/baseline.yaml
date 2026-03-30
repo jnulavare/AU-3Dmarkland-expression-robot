@@ -15,7 +15,7 @@ model:
 train:
   device: "cuda"
   seed: 42
-  epochs: 200
+  epochs: 300
   batch_size: 256
   num_workers: 0
   lr: 0.001
@@ -41,19 +41,17 @@ eval:
   # 评估时使用的权重文件名
   ckpt_file: "best.pt"
 
-# Metric configuration
+# 评估指标配置
 metrics:
-  # Percentile for absolute-error distribution, e.g. 95 => P95
+  # 绝对误差分位数（95 => P95）
   abs_error_percentile: 95.0
-
-  # Valid normalized output range for out-of-range ratio
+  # 合法输出区间（归一化后）
   out_range_lo: 0.0
   out_range_hi: 1.0
-
-  # Top-K motors shown in out-of-range ranking
+  # out-of-range 排行输出 Top-K
   out_of_range_top_k: 10
 
-  # 30-dim motor -> 4-region mapping
+  # 30维电机 -> 4区域映射
   # brow: 0-3
   # eye: 4-9 (eyelids + gaze)
   # jaw: 10-14 + 27-28 (head + jaw + neck)
@@ -64,7 +62,7 @@ metrics:
     jaw: [10, 11, 12, 13, 14, 27, 28]
     mouth: [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 29]
 
-  # Motor names used in ranking outputs
+  # 电机名称（与 0..29 对齐）
   motor_names:
     - "Brow Inner Left"
     - "Brow Inner Right"
@@ -97,14 +95,29 @@ metrics:
     - "Neck Roll"
     - "Nose Wrinkle"
 
-  # Error-context analysis: relation between sample error and expression/pose factors
+  # 误差与表情/头姿关系分析
   error_context:
     enabled: true
     bins: 10
     rel_file: "D:/code/AU+landmark/dataset/x2c_data_bundle/REL_input_vec_X2C_gpu.csv.gz"
     abs_file: "D:/code/AU+landmark/dataset/x2c_data_bundle/ABS_input_vec_X2C_gpu.csv.gz"
 
-# Explainability & structure-consistency analysis (run by explainability.py)
+# 输出边界约束（训练 + 验证/测试）
+boundary:
+  # 合法输出区间；未填时回退到 metrics.out_range_lo/hi
+  lo: 0.0
+  hi: 1.0
+  # val/test 时是否对预测做裁剪，保证输出不越界
+  clip_predictions_in_eval: true
+  train:
+    # 训练时主损失是否使用裁剪后的预测
+    clamp_for_task_loss: true
+    # 是否加入 boundary loss（越界幅度惩罚）
+    enable_boundary_loss: true
+    # 总损失 = L1 + boundary_loss_weight * boundary_loss
+    boundary_loss_weight: 0.1
+
+# 可解释性与结构一致性分析（explainability.py）
 explainability:
   split: "test"
 

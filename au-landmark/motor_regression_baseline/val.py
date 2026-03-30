@@ -13,7 +13,9 @@ from torch.utils.data import DataLoader
 from data_utils import XYDataset, build_xy_from_split, load_latent24_map, load_split_indices, load_target30_map
 from eval_metrics import (
     analyze_error_vs_context,
+    clip_predictions_to_range,
     collect_predictions,
+    compute_boundary_violation_metrics,
     compute_regression_metrics,
     load_context_feature_arrays,
     load_motor_names,
@@ -21,6 +23,31 @@ from eval_metrics import (
 )
 from model import MotorRegressorMLP
 from run_utils import resolve_eval_ckpt_path
+
+
+def _as_bool(v: object, default: bool) -> bool:
+    if v is None:
+        return default
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        return v.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(v)
+
+
+def resolve_boundary_eval_cfg(cfg: dict) -> dict:
+    """解析验证/测试阶段的边界后处理配置。"""
+    metrics_cfg = cfg.get("metrics", {})
+    boundary_cfg = cfg.get("boundary", {})
+    lo = float(boundary_cfg.get("lo", metrics_cfg.get("out_range_lo", 0.0)))
+    hi = float(boundary_cfg.get("hi", metrics_cfg.get("out_range_hi", 1.0)))
+    if hi <= lo:
+        raise RuntimeError(f"invalid boundary range: lo={lo}, hi={hi}")
+    return {
+        "lo": lo,
+        "hi": hi,
+        "clip_predictions_in_eval": _as_bool(boundary_cfg.get("clip_predictions_in_eval", True), default=True),
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +68,7 @@ def main() -> None:
     cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
     device = resolve_device(str(cfg["train"]["device"]))
     metrics_cfg = cfg.get("metrics", {})
+    boundary_eval_cfg = resolve_boundary_eval_cfg(cfg)
 
     ckpt_path, output_dir, run_name = resolve_eval_ckpt_path(cfg, args.ckpt)
 
@@ -68,7 +96,11 @@ def main() -> None:
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 
-    y_true, y_pred = collect_predictions(model, loader, device)
+    y_true, y_pred_raw = collect_predictions(model, loader, device)
+    if boundary_eval_cfg["clip_predictions_in_eval"]:
+        y_pred = clip_predictions_to_range(y_pred_raw, lo=boundary_eval_cfg["lo"], hi=boundary_eval_cfg["hi"])
+    else:
+        y_pred = y_pred_raw
     region_indices = load_motor_region_indices(metrics_cfg=metrics_cfg, dim=y_true.shape[1])
     motor_names = load_motor_names(metrics_cfg=metrics_cfg, dim=y_true.shape[1])
     metric_dict = compute_regression_metrics(
@@ -76,11 +108,24 @@ def main() -> None:
         y_pred=y_pred,
         region_indices=region_indices,
         abs_error_percentile=float(metrics_cfg.get("abs_error_percentile", 95.0)),
-        out_range_lo=float(metrics_cfg.get("out_range_lo", 0.0)),
-        out_range_hi=float(metrics_cfg.get("out_range_hi", 1.0)),
+        out_range_lo=float(boundary_eval_cfg["lo"]),
+        out_range_hi=float(boundary_eval_cfg["hi"]),
         motor_names=motor_names,
         out_of_range_top_k=int(metrics_cfg.get("out_of_range_top_k", 10)),
     )
+    metric_dict["boundary_constraint"] = {
+        "clip_predictions_in_eval": bool(boundary_eval_cfg["clip_predictions_in_eval"]),
+        "raw_prediction_boundary": compute_boundary_violation_metrics(
+            y_pred=y_pred_raw,
+            lo=float(boundary_eval_cfg["lo"]),
+            hi=float(boundary_eval_cfg["hi"]),
+        ),
+        "final_prediction_boundary": compute_boundary_violation_metrics(
+            y_pred=y_pred,
+            lo=float(boundary_eval_cfg["lo"]),
+            hi=float(boundary_eval_cfg["hi"]),
+        ),
+    }
 
     context_cfg = metrics_cfg.get("error_context", {})
     if bool(context_cfg.get("enabled", True)):
@@ -122,7 +167,9 @@ def main() -> None:
         f"mae={metrics['mae']:.6f} rmse={metrics['rmse']:.6f} "
         f"r2={metrics['r2'] if metrics['r2'] is not None else 'NA'} "
         f"ev={metrics['explained_variance'] if metrics['explained_variance'] is not None else 'NA'} "
-        f"oor={metrics['out_of_range']['ratio']:.6f} samples={metrics['samples']}"
+        f"oor={metrics['out_of_range']['ratio']:.6f} "
+        f"raw_oor={metrics['boundary_constraint']['raw_prediction_boundary']['ratio']:.6f} "
+        f"samples={metrics['samples']}"
     )
     print(f"[DONE] ckpt={ckpt_path}")
     print(f"[DONE] metrics={out_json}")
